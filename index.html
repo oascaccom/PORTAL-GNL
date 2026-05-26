@@ -3510,6 +3510,7 @@ let SB_EDITOR = SB.serviceKey !== '';
   if(!SB_EDITOR){
     document.addEventListener('DOMContentLoaded',function(){
       document.body.classList.add('readonly-mode');
+      setTimeout(()=>{ if(typeof detectDevice==='function') detectDevice(); },100);
     });
   }
 })();
@@ -3809,6 +3810,8 @@ async function loadFromSupabase(){
   // Badge editor
   const edBadge=document.getElementById('editorBadge');
   if(edBadge) edBadge.style.display=SB_EDITOR?'flex':'none';
+  // Recalcular altura del header tras mostrar/ocultar badge
+  setTimeout(()=>{ if(typeof detectDevice==='function') detectDevice(); },50);
 }
 function save(){
   DB.updated=new Date().toISOString();
