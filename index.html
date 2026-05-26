@@ -699,6 +699,12 @@ main{padding:14px 13px 8px}
         <span class="hd-pct" id="hdPct">0%</span>
       </div>
       <div id="sbSyncBadge" style="font-size:9px;color:rgba(255,255,255,.45);font-family:'IBM Plex Mono',monospace;margin-top:2px;text-align:right">⬤ Local</div>
+      <div id="editorBadge" style="display:none;margin-top:3px;text-align:right">
+        <span style="font-size:8.5px;background:rgba(192,138,30,.25);color:#F0C944;border-radius:4px;padding:1px 7px;font-family:'IBM Plex Mono',monospace;letter-spacing:.04em">✎ EDITOR</span>
+        <button onclick="cerrarSesionEditor()" title="Cerrar sesión de editor"
+          style="background:rgba(255,255,255,.1);border:none;color:rgba(255,255,255,.5);
+            border-radius:4px;padding:1px 6px;cursor:pointer;font-size:8px;margin-left:4px">Salir</button>
+      </div>
     </div>
   </div>
 </header>
@@ -3359,10 +3365,10 @@ window.addEventListener('message', function(ev){
       <div id="processWrap" style="display:none;margin-top:14px">
         <div class="divider">Resumen con IA (Groq — gratis, sin tarjeta)</div>
         <div class="fld">
-          <label>Groq API Key (gratis en console.groq.com)</label>
-          <input type="password" id="apiKey" placeholder="gsk_...">
+          <label>Groq API Key <span style="font-weight:300;color:var(--slate)">(se guarda en este navegador)</span></label>
+          <input type="password" id="apiKey" placeholder="Ingresa tu key gsk_... — solo la primera vez">
           <p style="font-size:10px;color:var(--slate);margin-top:3px">
-            Clave <strong>100% gratuita, sin tarjeta</strong> en <a href="https://console.groq.com" target="_blank" style="color:var(--blue)">console.groq.com</a> · Registro con Google o email · Solo se usa en esta sesión, no se guarda.
+            Clave <strong>100% gratuita, sin tarjeta</strong> en <a href="https://console.groq.com" target="_blank" style="color:var(--blue)">console.groq.com</a> · Se guarda automáticamente en este navegador · <strong>No aparece en el código público.</strong>
           </p>
         </div>
         <div class="fld">
@@ -3472,7 +3478,7 @@ const CRONO_KEY = "lng_pec_state_v3";
 let miClaveSecreta = localStorage.getItem('supabase_service_key') || '';
 
 const SB = {
-  url:         'https://qqwxorvtmlwtgmetxnhc.supabase.co/rest/v1/', // Tu URL de Supabase que empieza con https://
+  url:         'https://qqwxorvtmlwtgmetxnhc.supabase.co', // URL base sin /rest/v1/
   anonKey:     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFxd3hvcnZ0bWx3dGdtZXR4bmhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk3NTE0MTYsImV4cCI6MjA5NTMyNzQxNn0.DGwLY5bfTC5Dn46Tf1yHuSfX5uioYO7rTFRb8u7RN3U',  // Tu llave pública (anon)
   serviceKey:  miClaveSecreta,
   table:       'portal_state',
@@ -3483,10 +3489,19 @@ let SB_EDITOR = SB.serviceKey !== '';
 
 // 2. Función para activar el modo editor con una contraseña secreta
 function activarModoEditor() {
-  const clave = prompt("🔐 Acceso corporativo. Ingrese clave de autorización:");
-  if (clave) {
-    localStorage.setItem('supabase_service_key', clave);
-    alert("Clave guardada en este dispositivo. El portal se recargará en modo Editor.");
+  const clave = prompt("🔐 Ingresa tu clave de editor (service_role key de Supabase):");
+  if (clave && clave.trim().length > 20) {
+    localStorage.setItem('supabase_service_key', clave.trim());
+    alert("✅ Clave guardada en este navegador. El portal se recargará en modo Editor.");
+    window.location.reload();
+  } else if (clave !== null) {
+    alert("❌ Clave inválida. Debe ser la service_role key de Supabase.");
+  }
+}
+function cerrarSesionEditor() {
+  if (confirm("¿Cerrar sesión de editor? Este dispositivo volverá a modo solo lectura.")) {
+    localStorage.removeItem('supabase_service_key');
+    alert("Sesión cerrada. El portal se recargará en modo lectura.");
     window.location.reload();
   }
 }
@@ -3758,6 +3773,9 @@ async function loadFromSupabase(){
   }
   // Arrancar polling para jefes (no editor)
   if(!SB_EDITOR){ setInterval(sbPoll, 15000); }
+  // Mostrar badge de editor si corresponde
+  const edBadge=document.getElementById('editorBadge');
+  if(edBadge) edBadge.style.display=SB_EDITOR?'block':'none';
 }
 function save(){
   DB.updated=new Date().toISOString();
@@ -6617,10 +6635,14 @@ $("#fab").style.display='none';
 loadFromSupabase();
 /* API Key Groq precargada */
 (function(){
-  var k="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";
+  // Groq API Key: se guarda en este navegador, no está en el código
   var el=document.getElementById('apiKey');
-  if(el){ el.value=localStorage.getItem('groq_key')||k;
-    el.addEventListener('change',function(){ localStorage.setItem('groq_key',el.value); }); }
+  if(el){
+    var saved=localStorage.getItem('groq_key')||'';
+    el.value=saved;
+    el.addEventListener('change',function(){ localStorage.setItem('groq_key',el.value.trim()); });
+    if(!saved) el.placeholder='Ingresa tu Groq API key (gsk_...) — se guarda en este navegador';
+  }
 })();
 
 /* El iframe envía su estado al cargar; si el portal arrancó antes, lo pedimos. */
