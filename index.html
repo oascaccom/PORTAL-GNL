@@ -666,6 +666,22 @@ main{padding:14px 13px 8px}
 .wbadge{font-family:'IBM Plex Mono',monospace;font-size:10px;background:var(--blue-l);color:var(--blue-d);
   padding:2px 7px;border-radius:99px;font-weight:600}
 .toolbar{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px}
+
+/* ── Modo solo lectura ── */
+body.readonly-mode [contenteditable="true"]{pointer-events:none!important;cursor:default!important}
+body.readonly-mode .btn-primary{opacity:.35!important;pointer-events:none!important;cursor:not-allowed!important}
+body.readonly-mode .cp-avance-btn,body.readonly-mode .btn-del,body.readonly-mode .btn-ins,
+body.readonly-mode .btn-indent,body.readonly-mode .btn-outdent{opacity:.3!important;pointer-events:none!important}
+body.readonly-mode input[type=number],body.readonly-mode input[type=date],
+body.readonly-mode input[type=text]:not(#apiKey),body.readonly-mode textarea,
+body.readonly-mode select{pointer-events:none!important;opacity:.6!important}
+body.readonly-mode .btn-ghost{opacity:.4!important;pointer-events:none!important}
+/* Excepciones: botones que SÍ funcionan en lectura */
+body.readonly-mode button[onclick*="generarReporte"],
+body.readonly-mode button[onclick*="exportar"],
+body.readonly-mode button[onclick*="activarModo"],
+body.readonly-mode button[onclick*="go("],
+body.readonly-mode .nav-b{opacity:1!important;pointer-events:auto!important;cursor:pointer!important}
 </style>
 </head>
 <body>
@@ -3486,6 +3502,14 @@ const SB = {
 };
 
 let SB_EDITOR = SB.serviceKey !== '';
+// Aplicar modo readonly inmediatamente
+(function(){
+  if(!SB_EDITOR){
+    document.addEventListener('DOMContentLoaded',function(){
+      document.body.classList.add('readonly-mode');
+    });
+  }
+})();
 
 // 2. Función para activar el modo editor con una contraseña secreta
 function activarModoEditor() {
@@ -3773,7 +3797,13 @@ async function loadFromSupabase(){
   }
   // Arrancar polling para jefes (no editor)
   if(!SB_EDITOR){ setInterval(sbPoll, 15000); }
-  // Mostrar badge de editor si corresponde
+  // Modo readonly si no es editor
+  if(!SB_EDITOR){
+    document.body.classList.add('readonly-mode');
+  } else {
+    document.body.classList.remove('readonly-mode');
+  }
+  // Badge editor
   const edBadge=document.getElementById('editorBadge');
   if(edBadge) edBadge.style.display=SB_EDITOR?'block':'none';
 }
