@@ -3510,7 +3510,6 @@ let SB_EDITOR = SB.serviceKey !== '';
   if(!SB_EDITOR){
     document.addEventListener('DOMContentLoaded',function(){
       document.body.classList.add('readonly-mode');
-      setTimeout(()=>{ if(typeof detectDevice==='function') detectDevice(); },100);
     });
   }
 })();
@@ -3810,8 +3809,6 @@ async function loadFromSupabase(){
   // Badge editor
   const edBadge=document.getElementById('editorBadge');
   if(edBadge) edBadge.style.display=SB_EDITOR?'flex':'none';
-  // Recalcular altura del header tras mostrar/ocultar badge
-  setTimeout(()=>{ if(typeof detectDevice==='function') detectDevice(); },50);
 }
 function save(){
   DB.updated=new Date().toISOString();
@@ -6646,14 +6643,11 @@ function detectDevice(){
   const hh = hdr.getBoundingClientRect().height;
   const nh = nav.getBoundingClientRect().height || 52;
   const isPC = window.innerWidth >= 900;
-  // CSS variable para nav top en PC
   document.documentElement.style.setProperty('--hdr-h', hh+'px');
   if(isPC){
-    // PC: header fixed + nav fixed bajo header
     document.body.style.paddingTop = (hh + nh + 8) + 'px';
     document.body.style.paddingBottom = '0';
   } else {
-    // Móvil: header fixed top + nav fixed bottom
     document.body.style.paddingTop = hh + 'px';
     document.body.style.paddingBottom = nh + 'px';
   }
@@ -6663,6 +6657,14 @@ detectDevice();
 window.addEventListener('resize', ()=>{ detectDevice(); resizeCronoFrame(); });
 window.addEventListener('orientationchange', ()=>{ setTimeout(()=>{detectDevice();resizeCronoFrame();},300); });
 window.addEventListener('load', detectDevice);
+// ResizeObserver: recalcula padding cuando el header cambia de tamaño
+// (ej: al mostrar/ocultar badge de editor)
+(function(){
+  const hdr=document.querySelector('header');
+  if(hdr && typeof ResizeObserver !== 'undefined'){
+    new ResizeObserver(()=>detectDevice()).observe(hdr);
+  }
+})();
 
 /* ============ ARRANQUE ============ */
 renderAll();
