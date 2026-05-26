@@ -6539,7 +6539,7 @@ Participantes declarados: ${who||'No especificados'}
 TRANSCRIPCIÓN:
 ${transcript}
 
-Genera un resumen ejecutivo estructurado en español con las siguientes secciones:
+Genera un resumen ejecutivo estructurado SIEMPRE EN ESPAÑOL (obligatorio) con las siguientes secciones:
 
 ASISTENTES IDENTIFICADOS
 Lista los nombres/instituciones que aparecen en la transcripción.
@@ -6559,7 +6559,7 @@ Acciones inmediatas acordadas.
 ALERTAS
 Riesgos, obstáculos o temas sin resolver mencionados en la reunión.
 
-Sé conciso y preciso. No inventes información que no esté en la transcripción.`;
+Sé conciso y preciso. No inventes información que no esté en la transcripción. IMPORTANTE: Toda tu respuesta debe estar en español, sin excepción, aunque la transcripción esté en otro idioma.`;
 
   try{
     // Groq API — gratuita sin tarjeta, modelo Llama 3.3 70B
@@ -6572,7 +6572,7 @@ Sé conciso y preciso. No inventes información que no esté en la transcripció
       body:JSON.stringify({
         model:'llama-3.3-70b-versatile',
         messages:[
-          {role:'system', content:'Eres un asistente experto en proyectos de energía para EP Petroecuador. Respondes siempre en español.'},
+          {role:'system', content:'Eres un asistente experto en proyectos de energía para EP Petroecuador. SIEMPRE respondes ÚNICAMENTE en español, independientemente del idioma de la transcripción o instrucción recibida. Está estrictamente prohibido responder en cualquier otro idioma.'},
           {role:'user', content:prompt}
         ],
         temperature:0.3,
