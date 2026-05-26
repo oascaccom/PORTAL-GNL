@@ -1100,8 +1100,8 @@ main{padding:14px 13px 8px}
 
   td.col-id { width: 44px; text-align: center; font-family: var(--mono); font-size: 10.5px; font-weight: 600; color: var(--azul-pec); }
   td.col-dias { width: 42px; text-align: center; font-family: var(--mono); font-size: 10.5px; }
-  td.col-pred { width: 78px; padding: 1px 2px; }
-  .pred-wrap { position: relative; display: inline-block; width: 100%; }
+  td.col-pred { width: 78px; padding: 1px 2px; position: relative; overflow: visible; }
+  .pred-wrap { position: relative; display: inline-block; width: 100%; overflow: visible; }
   .pred-btn {
     width: 100%; padding: 4px 8px; font-size: 10.5px; font-family: var(--mono);
     border: 1px solid var(--gris-borde); border-radius: 4px; background: var(--blanco);
@@ -1112,10 +1112,11 @@ main{padding:14px 13px 8px}
   .pred-btn:hover { border-color: var(--azul-medio); }
   .pred-btn.active { border-color: var(--azul-medio); box-shadow: 0 0 0 2px var(--azul-claro); }
   .pred-dropdown {
-    position: fixed; z-index: 9999; background: var(--blanco);
+    position: absolute; z-index: 9999; background: var(--blanco);
     border: 1px solid var(--azul-medio); border-radius: 6px;
     box-shadow: 0 4px 20px rgba(14,34,71,.18); padding: 4px 0;
-    min-width: 200px; max-height: 240px; overflow-y: auto; display: none;
+    min-width: 220px; max-height: 240px; overflow-y: auto; display: none;
+    top: 100%; left: 0;
   }
   .pred-dropdown.open { display: block; }
   .pred-option {
@@ -1315,7 +1316,7 @@ main{padding:14px 13px 8px}
     .modal-bg { display: none !important; }
     body { -webkit-print-color-adjust: exact; print-color-adjust: exact; background: var(--blanco); }
     header.banner { page-break-after: avoid; }
-
+    
     .print-track-title {
       display: block !important;
       font-size: 18px;
@@ -1326,7 +1327,7 @@ main{padding:14px 13px 8px}
       border-top: 2px solid var(--azul-medio);
     }
     .print-track-title:first-of-type { border-top: none; padding-top: 0; }
-
+    
     .notes-panel {
       display: block !important;
       page-break-inside: avoid;
@@ -1362,7 +1363,7 @@ main{padding:14px 13px 8px}
 <header class=&quot;banner&quot;>
   <div class=&quot;banner-top&quot;>
 
-
+    
   </div>
   <h1 class=&quot;title&quot;>Cronograma LNG — Importación y Suministro</h1>
 
@@ -2544,7 +2545,7 @@ function openReporteCompleto(){
       padding-bottom: 4px;
       border-bottom: 2px solid #E8F0F8;
     }
-
+    
     .gantt-detallado {
       background: #FFFFFF;
       border: 1px solid #E1E6EC;
@@ -2673,7 +2674,7 @@ function openReporteCompleto(){
       transform: translateX(-4px) rotate(45deg);
       background: #A77419;
     }
-
+    
     .reporte-notes {
       background: #FFF7E0;
       border-left: 3px solid #A77419;
@@ -2697,28 +2698,28 @@ function openReporteCompleto(){
       word-wrap: break-word;
       overflow-wrap: break-word;
     }
-
+    
     @page {
       size: landscape;
       margin: 10mm;
     }
-
+    
     @media print {
       * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       body { margin: 0; padding: 0; }
       .btn { display: none !important; }
-      .reporte-header {
+      .reporte-header { 
         padding: 10px 20px;
         page-break-after: avoid;
       }
       .reporte-header h1 { font-size: 17px; margin-bottom: 1px; }
       .reporte-header .subtitle { font-size: 10.5px; }
       .reporte-body { padding: 0 20px 14px; }
-      .reporte-track-section {
+      .reporte-track-section { 
         page-break-before: always;
         page-break-inside: avoid;
       }
-      .reporte-track-section:first-of-type {
+      .reporte-track-section:first-of-type { 
         page-break-before: auto;
       }
       .reporte-track-header {
@@ -2726,12 +2727,12 @@ function openReporteCompleto(){
         padding: 8px 14px;
         margin-bottom: 10px;
       }
-      .reporte-kpi-grid {
+      .reporte-kpi-grid { 
         margin-bottom: 10px;
         gap: 8px;
       }
       .reporte-kpi-card { padding: 7px 10px; }
-      .gantt-detallado {
+      .gantt-detallado { 
         padding: 8px 10px;
         margin-bottom: 10px;
         page-break-inside: avoid;
@@ -2742,8 +2743,8 @@ function openReporteCompleto(){
         font-size: 8.5px;
       }
       .gantt-det-table td { padding: 4px 4px; }
-      .gantt-det-table .col-actividad {
-        max-width: 280px;
+      .gantt-det-table .col-actividad { 
+        max-width: 280px; 
         font-size: 9px;
         line-height: 1.25;
       }
@@ -2756,13 +2757,13 @@ function openReporteCompleto(){
         margin-bottom: 7px;
         padding-bottom: 3px;
       }
-      .reporte-notes {
+      .reporte-notes { 
         padding: 7px 10px;
         margin-top: 8px;
         page-break-inside: avoid;
       }
       .reporte-notes h4 { font-size: 10px; margin-bottom: 4px; }
-      .reporte-notes p {
+      .reporte-notes p { 
         font-size: 9px;
         line-height: 1.35;
         white-space: pre-wrap;
@@ -2773,35 +2774,35 @@ function openReporteCompleto(){
       }
     }
   </style>
-
+  
   <div class=&quot;reporte-header&quot;>
     <h1>Cronograma Ejecutivo LNG — Importación y Suministro</h1>
 
   </div>
-
+  
   <div class=&quot;reporte-body&quot;>`;
-
+  
   ['t2'].forEach((prefix, idx) => {
     const rows = state[prefix];
     const overrides = getOverrides(prefix);
     const { calc, t0d } = ganttColumns(rows, state.t0, state.granularity, overrides);
     const trackName = &quot;IMPORTACIÓN PUERTO BOLÍVAR — DPU TERMOGAS MACHALA&quot;;
     const notes = state[&quot;notes_&quot;+prefix] || &quot;&quot;;
-
+    
     let totalDays = 0;
     Object.values(calc).forEach(v => { if (v.fin){ const d = diffDaysCal(t0d, v.fin); if (d>totalDays) totalDays = d; } });
     const mf = rows.find(r => r.id === &quot;MF&quot;);
     const mfFin = mf &amp;&amp; calc[mf.id] ? calc[mf.id].fin : null;
     const tender = rows.find(r => r.id === &quot;M3&quot;);
     const tFin = tender &amp;&amp; calc[tender.id] ? calc[tender.id].fin : null;
-
+    
     html += `
     <div class=&quot;reporte-track-section&quot;>
       <div class=&quot;reporte-track-header&quot;>
         <h2>${trackName}</h2>
         <div class=&quot;meta&quot;>T0: ${fmtShort(t0d)} · Contrato: ${tFin ? fmtShort(tFin) : &quot;—&quot;} · First Gas: ${mfFin ? fmtShort(mfFin) : &quot;—&quot;}</div>
       </div>
-
+      
       <div class=&quot;reporte-kpi-grid&quot;>
         <div class=&quot;reporte-kpi-card&quot;>
           <div class=&quot;label&quot;>Duración Total</div>
@@ -2824,7 +2825,7 @@ function openReporteCompleto(){
           <div class=&quot;sub&quot;>${rows.filter(r => r.tipo === &quot;critico&quot;).length} críticas</div>
         </div>
       </div>
-
+      
       <div class=&quot;reporte-section&quot;>
         <h3>Cronograma Detallado</h3>
         <div class=&quot;gantt-detallado&quot;>
@@ -2841,7 +2842,7 @@ function openReporteCompleto(){
               </tr>
             </thead>
             <tbody>`;
-
+    
     let minDate = t0d, maxDate = t0d;
     rows.forEach(r => {
       const c = calc[r.id];
@@ -2851,22 +2852,22 @@ function openReporteCompleto(){
       }
     });
     const spanDays = Math.max(1, diffDaysCal(minDate, maxDate));
-
+    
     rows.forEach(r => {
       const c = calc[r.id] || {};
       const iniTxt = c.ini ? fmtShort(c.ini) : &quot;—&quot;;
       const finTxt = c.fin ? fmtShort(c.fin) : &quot;—&quot;;
       const diasTxt = r.tipo === &quot;fase&quot; ? &quot;—&quot; : (r.dias || 0);
-
+      
       let rowClass = &quot;&quot;;
       if (r.tipo === &quot;fase&quot;) rowClass = &quot;fase-row&quot;;
       else if (r.tipo === &quot;hito&quot;) rowClass = &quot;hito-row&quot;;
-
+      
       let tipoBadge = &quot;&quot;;
       if (r.tipo !== &quot;fase&quot;){
         tipoBadge = `<span class=&quot;badge ${r.tipo}&quot;>${r.tipo}</span>`;
       }
-
+      
       html += `
               <tr class=&quot;${rowClass}&quot;>
                 <td class=&quot;col-id&quot;>${r.id}</td>
@@ -2876,11 +2877,11 @@ function openReporteCompleto(){
                 <td class=&quot;col-fin&quot;>${finTxt}</td>
                 <td class=&quot;col-tipo&quot;>${tipoBadge}</td>
                 <td class=&quot;col-gantt&quot;>`;
-
+      
       if (c.ini &amp;&amp; c.fin){
         const offsetPct = (diffDaysCal(minDate, c.ini) / spanDays) * 100;
         const widthPct = r.tipo === &quot;hito&quot; ? 0 : (diffDaysCal(c.ini, c.fin) / spanDays) * 100;
-        const style = r.tipo === &quot;hito&quot;
+        const style = r.tipo === &quot;hito&quot; 
           ? `left:${offsetPct}%;`
           : `left:${offsetPct}%; width:${Math.max(1, widthPct)}%;`;
         html += `
@@ -2888,18 +2889,18 @@ function openReporteCompleto(){
                     <div class=&quot;gantt-det-bar ${r.tipo}&quot; style=&quot;${style}&quot;></div>
                   </div>`;
       }
-
+      
       html += `
                 </td>
               </tr>`;
     });
-
+    
     html += `
             </tbody>
           </table>
         </div>
       </div>`;
-
+    
     if (notes.trim()){
       html += `
       <div class=&quot;reporte-notes&quot;>
@@ -2907,14 +2908,14 @@ function openReporteCompleto(){
         <p>${notes}</p>
       </div>`;
     }
-
+    
     html += `
     </div>`;
   });
-
+  
   html += `
   </div>`;
-
+  
   document.getElementById(&quot;reporteContent&quot;).innerHTML = html;
   document.getElementById(&quot;reporteModal&quot;).classList.add(&quot;active&quot;);
 }
@@ -3014,24 +3015,23 @@ document.querySelectorAll(&quot;.view&quot;).forEach(s => s.classList.toggle(&qu
 function predOpen(btn){
   // Cerrar otros dropdowns abiertos
   document.querySelectorAll('.pred-dropdown.open').forEach(d => {
-    if (d !== btn.nextElementSibling){
+    if(d !== btn.nextElementSibling){
       d.classList.remove('open');
-      d.previousElementSibling &amp;&amp; d.previousElementSibling.classList.remove('active');
+      if(d.previousElementSibling) d.previousElementSibling.classList.remove('active');
     }
   });
   const dd = btn.nextElementSibling;
   const isOpen = dd.classList.contains('open');
-  if (isOpen){
-    dd.classList.remove('open');
-    btn.classList.remove('active');
-    return;
+  dd.classList.toggle('open', !isOpen);
+  btn.classList.toggle('active', !isOpen);
+  // Ajustar dirección: si no cabe hacia abajo, abrir hacia arriba
+  if(!isOpen){
+    dd.style.top='';dd.style.bottom='';
+    const r=dd.getBoundingClientRect();
+    const wh=window.innerHeight||document.documentElement.clientHeight;
+    if(r.bottom>wh) { dd.style.top='auto'; dd.style.bottom='100%'; }
+    else { dd.style.top='100%'; dd.style.bottom='auto'; }
   }
-  dd.classList.add('open');
-  btn.classList.add('active');
-  // Posicionar el dropdown
-  const rect = btn.getBoundingClientRect();
-  dd.style.top = (rect.bottom + window.scrollY + 2) + 'px';
-  dd.style.left = rect.left + 'px';
 }
 function predToggle(optEl, prefix, idx, id){
   const row = state[prefix][idx]; if (!row) return;
