@@ -714,12 +714,15 @@ body.readonly-mode .nav-b{opacity:1!important;pointer-events:auto!important;curs
         <div class="hd-prog"><i id="hdProg" style="width:0%"></i></div>
         <span class="hd-pct" id="hdPct">0%</span>
       </div>
-      <div id="sbSyncBadge" style="font-size:9px;color:rgba(255,255,255,.45);font-family:'IBM Plex Mono',monospace;margin-top:2px;text-align:right">⬤ Local</div>
-      <div id="editorBadge" style="display:none;margin-top:3px;text-align:right">
-        <span style="font-size:8.5px;background:rgba(192,138,30,.25);color:#F0C944;border-radius:4px;padding:1px 7px;font-family:'IBM Plex Mono',monospace;letter-spacing:.04em">✎ EDITOR</span>
-        <button onclick="cerrarSesionEditor()" title="Cerrar sesión de editor"
-          style="background:rgba(255,255,255,.1);border:none;color:rgba(255,255,255,.5);
-            border-radius:4px;padding:1px 6px;cursor:pointer;font-size:8px;margin-left:4px">Salir</button>
+      <!-- Sincronizado + Editor en una sola fila -->
+      <div style="display:flex;align-items:center;gap:6px;margin-top:2px;justify-content:flex-end">
+        <div id="sbSyncBadge" style="font-size:9px;color:rgba(255,255,255,.45);font-family:'IBM Plex Mono',monospace">⬤ Local</div>
+        <div id="editorBadge" style="display:none;align-items:center;gap:4px">
+          <span style="font-size:8.5px;background:rgba(192,138,30,.25);color:#F0C944;border-radius:4px;padding:1px 7px;font-family:'IBM Plex Mono',monospace;letter-spacing:.04em">✎ EDITOR</span>
+          <button onclick="cerrarSesionEditor()" title="Cerrar sesión de editor"
+            style="background:rgba(255,255,255,.1);border:none;color:rgba(255,255,255,.5);
+              border-radius:4px;padding:1px 6px;cursor:pointer;font-size:8px;line-height:1.4">Salir</button>
+        </div>
       </div>
     </div>
   </div>
@@ -3805,7 +3808,7 @@ async function loadFromSupabase(){
   }
   // Badge editor
   const edBadge=document.getElementById('editorBadge');
-  if(edBadge) edBadge.style.display=SB_EDITOR?'block':'none';
+  if(edBadge) edBadge.style.display=SB_EDITOR?'flex':'none';
 }
 function save(){
   DB.updated=new Date().toISOString();
