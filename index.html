@@ -4,7 +4,28 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Control de Proyecto · Importación GNL · EP Petroecuador</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js">
+/* --- Reproductor con Stop --- */
+(function(){
+  let _iv=null;
+  function fmt(s){if(isNaN(s)||!isFinite(s))return '0:00';const m=Math.floor(s/60),ss=Math.floor(s%60);return m+':'+(ss<10?'0':'')+ss;}
+  function tick(){
+    const a=document.getElementById('audioFilePlayer');if(!a)return;
+    const sk=document.getElementById('filePlayerSeek');const ti=document.getElementById('filePlayerTime');
+    if(sk&&a.duration){sk.max=a.duration;sk.value=a.currentTime;}
+    if(ti)ti.textContent=fmt(a.currentTime)+' / '+fmt(a.duration);
+    const btn=document.getElementById('btnFilePlay');if(btn)btn.textContent=a.paused?'▶ Play':'⏸ Pausa';
+  }
+  window.filePlayerToggle=function(){const a=document.getElementById('audioFilePlayer');if(!a||!a.src)return;if(a.paused){a.play();_iv=setInterval(tick,300);}else{a.pause();clearInterval(_iv);tick();}};
+  window.filePlayerStop=function(){const a=document.getElementById('audioFilePlayer');if(!a)return;a.pause();a.currentTime=0;clearInterval(_iv);tick();const btn=document.getElementById('btnFilePlay');if(btn)btn.textContent='▶ Play';};
+  document.addEventListener('DOMContentLoaded',()=>{
+    const a=document.getElementById('audioFilePlayer');if(!a)return;
+    a.addEventListener('loadedmetadata',tick);
+    a.addEventListener('ended',()=>{clearInterval(_iv);tick();});
+  });
+})();
+
+</script>
 <script>/* JSZip v3.10.1 — embebido para generación DOCX sin CDN */
 /*!
 
@@ -871,6 +892,15 @@ body.readonly-mode .nav-b{opacity:1!important;pointer-events:auto!important;curs
 
 <!-- ========== CRONOGRAMA ========== -->
 <section class="view" id="v-crono">
+  <!-- Barra de versiones del cronograma (solo visible en modo editor) -->
+  <div id="versionBar" style="display:none;align-items:center;gap:10px;padding:8px 16px;background:#f4f7fb;border-bottom:1px solid var(--line);flex-wrap:wrap">
+    <span style="font-size:11.5px;font-weight:600;color:var(--navy);letter-spacing:.04em">CONTROL DE VERSIONES</span>
+    <span id="versionBadge" style="display:none;font-size:11px;font-weight:600;color:#fff;background:var(--blue);border-radius:20px;padding:2px 10px"></span>
+    <div style="margin-left:auto;display:flex;gap:8px">
+      <button onclick="mostrarHistorial()" style="padding:5px 14px;font-size:12px;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer;color:var(--navy)">📋 Historial</button>
+      <button onclick="crearVersion()" style="padding:5px 16px;font-size:12px;background:var(--blue);color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600">💾 Guardar versión</button>
+    </div>
+  </div>
   <iframe id="cronoFrame" title="Cronograma LNG" style="width:100%;border:none;display:block;background:#FAFBFC;min-height:calc(100vh - 110px)" srcdoc="<!DOCTYPE html>
 <html lang=&quot;es&quot;>
 <head>
@@ -1498,6 +1528,25 @@ function loadState(){
     }
   } catch(e){}
 }
+
+/* ── Change log: envía cada mutación al portal padre para trazabilidad ─────── */
+function logChange(tipo, datos){
+  try{
+    if(window.parent && window.parent!==window){
+      window.parent.postMessage({type:'crono-log', entry:{
+        ts: new Date().toISOString(), tipo, ...datos
+      }}, '*');
+    }
+  }catch(e){}
+}
+function autoSnapshot(motivo){
+  try{
+    if(window.parent && window.parent!==window){
+      window.parent.postMessage({type:'crono-auto-snapshot', motivo,
+        payload: JSON.parse(JSON.stringify(state))}, '*');
+    }
+  }catch(e){}
+}
 function saveState(){
   try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(e){}
   // Notificar al portal padre (el iframe corre en origen aislado)
@@ -1790,6 +1839,12 @@ function renderTrack(prefix){
     el.addEventListener(&quot;keydown&quot;, (e) => { if (e.key === &quot;Enter&quot;){ e.preventDefault(); el.blur(); } });
   });
   wrap.querySelectorAll(&quot;select.tipo-sel&quot;).forEach(el => el.addEventListener(&quot;change&quot;, onCellEdit));
+  // Autocompletado para la columna Responsable
+  wrap.querySelectorAll(&quot;td.col-resp[contenteditable]&quot;).forEach(el => {
+    el.addEventListener(&quot;input&quot;, respSuggest);
+    el.addEventListener(&quot;focus&quot;, respSuggest);
+    el.addEventListener(&quot;blur&quot;, ()=>setTimeout(respHide,150));
+  });
   wrap.querySelectorAll(&quot;input[type=date][data-field=inicio]&quot;).forEach(el => {
     el.addEventListener(&quot;change&quot;, onDateOverrideISO);
   });
@@ -1840,6 +1895,7 @@ function onCellEdit(e){
     row[field] = val;
   }
 
+  logChange('modificado',{id:row.id, actividad:row.actividad||row.id, campo:field, nuevo:val});
   saveState();
   renderAll(prefix);
 }
@@ -1880,10 +1936,12 @@ function onDateOverrideISO(e){
   const id = inp.dataset.id;
   const val = inp.value; // ya viene en formato YYYY-MM-DD del input date
   if (val){
+    logChange('override',{id, campo:'fecha_inicio', nuevo:val});
     setOverride(prefix, id, val); // val ya es ISO
     saveState();
     renderAll(prefix);
   } else {
+    logChange('override',{id, campo:'fecha_inicio', nuevo:null});
     setOverride(prefix, id, null);
     saveState();
     renderAll(prefix);
@@ -1905,7 +1963,9 @@ function makeNewRow(tipo, nivelOverride){
 /* Añadir al final (legado) */
 function addTask(prefix, tipo){
   tipo = tipo || &quot;actividad&quot;;
-  state[prefix].push(makeNewRow(tipo));
+  const nr=makeNewRow(tipo);
+  state[prefix].push(nr);
+  logChange('nuevo',{id:nr.id, actividad:nr.actividad, tipo:nr.tipo});
   saveState();
   renderAll(prefix);
 }
@@ -1926,6 +1986,7 @@ function addTaskAt(prefix, tipo, afterIdx){
   const newRow = makeNewRow(tipo, nivelTarget);
   state[prefix].splice(afterIdx + 1, 0, newRow);
   recalcularWBS(prefix);
+  logChange('nuevo',{id:newRow.id, actividad:newRow.actividad, tipo:newRow.tipo, posicion:afterIdx+1});
   saveState();
   renderAll(prefix);
 }
@@ -1970,6 +2031,7 @@ function showInsertMenu(prefix, idx, btn){
 function delRow(prefix, idx){
   if (!confirm(&quot;¿Eliminar esta fila?&quot;)) return;
   const row = state[prefix][idx];
+  if(row) logChange('eliminado',{id:row.id, actividad:row.actividad||row.id, tipo:row.tipo, datos:JSON.parse(JSON.stringify(row))});
   if (row &amp;&amp; getOverrides(prefix)[row.id]) setOverride(prefix, row.id, null);
   state[prefix].splice(idx, 1);
   recalcularWBS(prefix);
@@ -1979,8 +2041,10 @@ function delRow(prefix, idx){
 
 function resetTrack(prefix){
   if (!confirm(&quot;¿Resetear este cronograma a los valores originales? (También se borrarán las fechas manuales)&quot;)) return;
+  autoSnapshot('(automático — antes de reset)');
   state[prefix] = deepClone(prefix === &quot;t1&quot; ? BASE_T1 : BASE_T2);
   state[&quot;overrides_&quot;+prefix] = {};
+  logChange('reset',{id:'—', actividad:'Reset completo del cronograma', tipo:'reset'});
   saveState();
   renderAll(prefix);
 }
@@ -3116,10 +3180,55 @@ window.addEventListener('message', function(ev){
   }
 });
 </script>
+</script>
+<div id=&quot;resp-suggest&quot; style=&quot;display:none;position:fixed;z-index:9999;background:#fff;border:1px solid #d0d7de;border-radius:8px;box-shadow:0 4px 16px rgba(14,34,71,.15);padding:4px 0;min-width:160px;max-height:200px;overflow-y:auto;font-size:12px&quot;></div>
+<script>
+function respAllValues(){
+  var vals=[];
+  var seen={};
+  (['t2']).forEach(function(p){
+    (state[p]||[]).forEach(function(r){
+      if(r.resp&amp;&amp;r.resp.trim()&amp;&amp;!seen[r.resp.trim()]){seen[r.resp.trim()]=1;vals.push(r.resp.trim());}
+    });
+  });
+  return vals.sort(function(a,b){return a.localeCompare(b,'es');});
+}
+function respSuggest(e){
+  var td=e.target; if(!td) return;
+  var q=(td.textContent||'').trim().toLowerCase();
+  var all=respAllValues();
+  var matches=all.filter(function(v){return !q||v.toLowerCase().indexOf(q)!==-1;});
+  var box=document.getElementById('resp-suggest');
+  if(!matches.length){respHide();return;}
+  var r=td.getBoundingClientRect();
+  box.style.cssText='display:block;position:fixed;z-index:9999;background:#fff;border:1px solid #d0d7de;border-radius:8px;box-shadow:0 4px 16px rgba(14,34,71,.15);padding:4px 0;min-width:'+Math.max(160,r.width)+'px;max-height:200px;overflow-y:auto;font-size:12px;left:'+r.left+'px;top:'+(r.bottom+2)+'px';
+  var html='';
+  for(var i=0;i&lt;matches.length;i++){
+    var v=matches[i];
+    html+='&lt;div class=&quot;rs-opt&quot; data-val=&quot;'+v.replace(/&amp;/g,'&amp;amp;').replace(/&quot;/g,'&amp;quot;')+'&quot; style=&quot;padding:6px 12px;cursor:pointer;color:#1f2937&quot;&gt;'+v+'&lt;/div&gt;';
+  }
+  box.innerHTML=html;
+  [].forEach.call(box.querySelectorAll('.rs-opt'),function(opt){
+    opt.addEventListener('mouseenter',function(){this.style.background='#eef5ff';});
+    opt.addEventListener('mouseleave',function(){this.style.background='';});
+    opt.addEventListener('mousedown',function(ev){ev.preventDefault();respPick(this.dataset.val);});
+  });
+}
+function respPick(val){
+  var box=document.getElementById('resp-suggest'); box.style.display='none';
+  var active=document.activeElement;
+  if(active&amp;&amp;active.dataset&amp;&amp;active.dataset.field==='resp'){active.textContent=val;active.blur();}
+}
+function respHide(){var b=document.getElementById('resp-suggest');if(b)b.style.display='none';}
+document.addEventListener('click',function(e){
+  if(!e.target.closest('#resp-suggest')&amp;&amp;!e.target.matches('td.col-resp'))respHide();
+},true);
+</script>
 </body>
 </html>
 "></iframe>
 </section>
+
 
 <!-- ========== CONTROL DE PROYECTO ========== -->
 <section class="view" id="v-control">
@@ -3330,6 +3439,14 @@ window.addEventListener('message', function(ev){
         <label>Participantes</label>
         <input id="recWho" placeholder="CELEC EP, Yilport, ARCH...">
       </div>
+      <div class="fld">
+        <label>Fecha de la reunión</label>
+        <input id="recDate" type="date">
+      </div>
+      <div style="display:flex;gap:10px;margin-bottom:4px">
+        <div class="fld" style="flex:1;margin-bottom:0"><label>Hora inicio</label><input id="recTimeStart" type="time"></div>
+        <div class="fld" style="flex:1;margin-bottom:0"><label>Hora fin</label><input id="recTimeEnd" type="time"></div>
+      </div>
 
       <div class="seg" id="recSeg" style="margin-top:4px">
         <button class="on" data-rmode="mic">🎙 Micrófono en vivo</button>
@@ -3375,20 +3492,27 @@ window.addEventListener('message', function(ev){
         </div>
         <input type="file" id="audioFile" accept="audio/*" style="display:none" onchange="handleAudioFile(event)">
         <div id="fileInfo" style="display:none;margin-top:10px">
-          <audio id="audioFilePlayer" controls style="width:100%;border-radius:8px"></audio>
+          <audio id="audioFilePlayer" style="display:none"></audio>
+          <div style="background:var(--mist);border:1px solid var(--line);border-radius:10px;padding:10px 12px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+              <button id="btnFilePlay" onclick="filePlayerToggle()" class="btn btn-primary btn-sm" style="min-width:84px">▶ Play</button>
+              <button onclick="filePlayerStop()" class="btn btn-ghost btn-sm">⏹ Stop</button>
+              <span id="filePlayerTime" class="mono" style="font-size:11px;color:var(--slate);margin-left:auto">0:00 / 0:00</span>
+            </div>
+            <input id="filePlayerSeek" type="range" min="0" value="0" step="0.5"
+              style="width:100%;accent-color:var(--blue);cursor:pointer"
+              oninput="document.getElementById('audioFilePlayer').currentTime=this.value">
+          </div>
           <p id="fileNameLbl" style="font-size:11px;color:var(--slate);margin-top:6px;text-align:center"></p>
         </div>
       </div>
 
       <!-- Sección resumen IA — Google Gemini -->
       <div id="processWrap" style="display:none;margin-top:14px">
-        <div class="divider">Resumen con IA (Groq — gratis, sin tarjeta)</div>
+        <div class="divider">Resumen con IA</div>
         <div class="fld">
           <label>Groq API Key <span style="font-weight:300;color:var(--slate)">(se guarda en este navegador)</span></label>
           <input type="password" id="apiKey" placeholder="Ingresa tu key gsk_... — solo la primera vez">
-          <p style="font-size:10px;color:var(--slate);margin-top:3px">
-            Clave <strong>100% gratuita, sin tarjeta</strong> en <a href="https://console.groq.com" target="_blank" style="color:var(--blue)">console.groq.com</a> · Se guarda automáticamente en este navegador · <strong>No aparece en el código público.</strong>
-          </p>
         </div>
         <div class="fld">
           <label>Transcripción (editar si es necesario)</label>
@@ -3396,7 +3520,7 @@ window.addEventListener('message', function(ev){
             placeholder="La transcripción automática aparecerá aquí. Puedes editarla antes de enviar a IA."></textarea>
         </div>
         <button class="btn btn-primary btn-block" onclick="genSummary()" id="btnSummary">
-          ✦ Generar resumen con Groq (Llama 3)
+          ✦ Generar resumen
         </button>
       </div>
 
@@ -3619,6 +3743,8 @@ function applyRemoteState(remoteData){
     iniOverride:    remoteData.iniOverride     || {},
     diasOverride:   remoteData.diasOverride    || {},
     _cronoSnapshot: remoteData._cronoSnapshot  || null,
+    cronoLog:       remoteData.cronoLog        || [],
+    cronoVersiones: remoteData.cronoVersiones  || [],
     updated:        remoteData.updated         || new Date().toISOString()
   };
   try{ localStorage.setItem(KEY, JSON.stringify(DB)); }catch(e){}
@@ -3783,6 +3909,8 @@ function load(){
   raw.iniOverride     = raw.iniOverride     || {};
   raw.diasOverride    = raw.diasOverride    || {};
   raw.updated         = raw.updated         || new Date().toISOString();
+  raw.cronoLog        = raw.cronoLog        || [];
+  raw.cronoVersiones  = raw.cronoVersiones  || [];
   return raw;
 }
 /* Carga inicial desde Supabase (asíncrona — sobreescribe localStorage si hay datos más recientes) */
@@ -3805,6 +3933,9 @@ async function loadFromSupabase(){
     document.body.classList.add('readonly-mode');
   } else {
     document.body.classList.remove('readonly-mode');
+    const vBar=document.getElementById('versionBar');
+    if(vBar) vBar.style.display='flex';
+    actualizarBadgeVersiones();
   }
   // Badge editor
   const edBadge=document.getElementById('editorBadge');
@@ -3815,6 +3946,7 @@ function save(){
   try{ localStorage.setItem(KEY,JSON.stringify(DB)); }
   catch(e){ toast("No se pudo guardar — almacenamiento no disponible"); }
   renderAll(); // incluye renderResumen() que lee de cpRecalcular()
+  try{ actualizarBadgeVersiones(); }catch(e){}
   if(SB_EDITOR && SB.url !== 'SUPABASE_URL'){
     const badge=document.getElementById('sbSyncBadge');
     if(badge){ badge.textContent='↻ Guardando…'; badge.style.color='rgba(255,255,255,.6)'; }
@@ -3830,6 +3962,7 @@ function save(){
 const $=(s,c)=>(c||document).querySelector(s);
 const $$=(s,c)=>[...(c||document).querySelectorAll(s)];
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+function renderMd(txt){if(!txt)return '';return txt.split('\n').map(line=>{const m=line.match(/^#{1,3}\s+(.+)/);return m?'<strong>'+esc(m[1])+'</strong>':esc(line);}).join('<br>');}
 const days=(a,b)=>Math.round((b-a)/864e5);
 function fmtD(d){ if(!d) return "—"; const x=new Date(d);
   return x.getUTCDate? (String(x.getUTCDate()).padStart(2,'0')+" "+
@@ -4317,9 +4450,11 @@ async function exportarApuntes(){
 
 /* ============ REUNIONES ============ */
 function renderMeetings(){
-  const now=new Date(new Date().toDateString());
-  const up=DB.meetings.filter(m=>new Date(m.date)>=now).sort((a,b)=>new Date(a.date)-new Date(b.date));
-  const pa=DB.meetings.filter(m=>new Date(m.date)<now).sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const ahora=new Date();
+  const dt=m=>{if(!m.date)return new Date(0);const h=(m.time&&/^\d{1,2}:\d{2}/.test(m.time))?m.time.slice(0,5):'23:59';return new Date(m.date+'T'+h+':00');};
+  const esProxima=m=>!m.realizada&&dt(m)>ahora;
+  const up=DB.meetings.filter(esProxima).sort((a,b)=>dt(a)-dt(b));
+  const pa=DB.meetings.filter(m=>!esProxima(m)).sort((a,b)=>dt(b)-dt(a));
   $("#meetUpcoming").innerHTML=up.length?up.map(meetCard).join(''):'<div class="empty"><span class="ic">📅</span>Sin reuniones próximas</div>';
   $("#meetPast").innerHTML=pa.length?pa.map(meetCard).join(''):'<div class="empty"><span class="ic">—</span>Sin reuniones registradas</div>';
 }
@@ -4338,15 +4473,16 @@ function meetCard(m){
     <div class="item-ic m">📅</div>
     <div class="item-bd" style="flex:1">
       <div class="item-tt">${esc(m.title)}</div>
-      <div class="item-mt">${fmtMeetDate(m.date)}${m.time?' · '+m.time:''}${m.who?' · '+esc(m.who):''}</div>
+      <div class="item-mt">${fmtMeetDate(m.date)}${m.time?' · '+m.time+(m.timeEnd?'–'+m.timeEnd:''):''}${m.who?' · '+esc(m.who):''}</div>
       ${m.location?`<div class="item-mt">📍 ${esc(m.location)}</div>`:''}
       ${m.notes?`<div class="item-mt">${esc(m.notes).slice(0,120)}${m.notes.length>120?'…':''}</div>`:''}
       <div class="meet-full" id="mfull-${m.id}" style="display:none;margin-top:8px;border-top:1px solid var(--line);padding-top:8px">
         ${m.notes?`<div style="white-space:pre-wrap;font-size:12px;line-height:1.6">${esc(m.notes)}</div>`:''}
-        ${m.summary?`<div style="margin-top:8px;padding:10px;background:#f0f6ff;border-radius:8px;font-size:11.5px;white-space:pre-wrap;color:var(--navy)">${esc(m.summary)}</div>`:''}
+        ${m.summary?`<div style="margin-top:8px;padding:10px;background:#f0f6ff;border-radius:8px;font-size:11.5px;line-height:1.6;color:var(--navy)">${renderMd(m.summary)}</div>`:''}
       </div>
       <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
         ${hasDetail?`<button onclick="toggleMeet('${m.id}')" id="mbtn-${m.id}" class="btn-meet">▼ Detalle</button>`:''}
+        <button onclick="editarReunion('${m.id}')" class="btn-meet">✏️ Editar</button>
         <button onclick="exportarActa('${m.id}')" class="btn-meet">📄 Acta Word</button>
         <button onclick="agendarOutlook('${m.id}')" class="btn-meet">📅 Outlook</button>
         ${m.icsUid?'<span style="font-size:9px;color:var(--slate);align-self:center">● Importado</span>':''}
@@ -4361,6 +4497,30 @@ function toggleMeet(id){
   const open=f.style.display!=='none';
   f.style.display=open?'none':'block';
   if(b) b.textContent=open?'▼ Detalle':'▲ Ocultar';
+}
+function editarReunion(id){
+  const m=DB.meetings.find(x=>x.id===id); if(!m){toast('Reunión no encontrada');return;}
+  const h=`<div class="sheet-h"><h3>Editar reunión</h3><button class="sheet-x" onclick="closeModal()">×</button></div>
+    <div class="fld"><label>Título / tema</label><input id="em_title" value="${esc(m.title||'')}"></div>
+    <div class="fld"><label>Participantes</label><input id="em_who" value="${esc(m.who||'')}" placeholder="CELEC EP, Yilport..."></div>
+    <div class="fld" style="display:flex;gap:10px">
+      <div style="flex:1"><label style="font-size:12px;font-weight:600;color:var(--navy)">Fecha</label><input type="date" id="em_date" value="${esc(m.date||'')}" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:7px"></div>
+      <div style="flex:1"><label style="font-size:12px;font-weight:600;color:var(--navy)">Hora inicio</label><input type="time" id="em_time" value="${esc(m.time||'')}" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:7px"></div>
+      <div style="flex:1"><label style="font-size:12px;font-weight:600;color:var(--navy)">Hora fin</label><input type="time" id="em_timeEnd" value="${esc(m.timeEnd||'')}" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:7px"></div>
+    </div>
+    <div class="fld"><label>Notas / acuerdos</label><textarea id="em_notes" rows="5">${esc(m.notes||'')}</textarea></div>
+    <button class="btn btn-primary btn-block" onclick="guardarEdicionReunion('${id}')">Guardar cambios</button>`;
+  document.getElementById('sheetBody').innerHTML=h; openModalRaw();
+}
+function guardarEdicionReunion(id){
+  const m=DB.meetings.find(x=>x.id===id); if(!m){toast('Reunión no encontrada');return;}
+  m.title=document.getElementById('em_title').value.trim()||m.title;
+  m.who=document.getElementById('em_who').value.trim();
+  m.date=document.getElementById('em_date').value||m.date;
+  m.time=document.getElementById('em_time').value;
+  m.timeEnd=document.getElementById('em_timeEnd').value;
+  m.notes=document.getElementById('em_notes').value.trim();
+  closeModal(); save(); toast('Reunión actualizada');
 }
 async function exportarActa(id){
   const m=DB.meetings.find(x=>x.id===id); if(!m){toast('No encontrada');return;}
@@ -4378,7 +4538,7 @@ async function exportarActa(id){
   function mrow(lbl,val){return `<w:tr><w:tc>${_tcPr(2340,GRC)}${_para(lbl,{bold:true,size:20,color:GR})}</w:tc><w:tc>${_tcPr(7020)}${_para(val||'—',{size:20})}</w:tc></w:tr>`;}
   const datos=`<w:tbl><w:tblPr><w:tblW w:w="9360" w:type="dxa"/>${_borders()}</w:tblPr>
     ${mrow('Reunión',m.title)}
-    ${mrow('Fecha',fecha+(m.time?' · '+m.time:''))}
+    ${mrow('Fecha',fecha+(m.time?' · '+m.time+(m.timeEnd?' – '+m.timeEnd:''):''))}
     ${m.location?mrow('Lugar / Modalidad',m.location):''}
     ${mrow('Participantes',m.who||'—')}
     ${mrow('Elaborado por','Gerencia de Transformación Empresarial y Proyectos Especiales')}
@@ -4391,9 +4551,13 @@ async function exportarActa(id){
   const sumXml=m.summary?_h2('Resumen Ejecutivo',AZ2)+
     m.summary.split('\n').filter(Boolean).map(l=>_para(l,{size:21})).join(''):'';
 
-  function firma(cargo){return `<w:tc>${_tcPr(2920)}<w:p><w:pPr><w:spacing w:before="1400" w:after="0"/></w:pPr></w:p><w:p><w:pPr><w:pBdr><w:top w:val="single" w:sz="6" w:space="1" w:color="999999"/></w:pBdr><w:jc w:val="center"/></w:pPr></w:p>${_para(cargo,{size:18,color:GR,align:'center'})}</w:tc>`;}
-  const firmas=`<w:tbl><w:tblPr><w:tblW w:w="9360" w:type="dxa"/>${_borders(false)}</w:tblPr>
-    <w:tr>${firma('Convocante / Gerencia PEC')}<w:tc>${_tcPr(200)}${_para('')}</w:tc>${firma('Representante CELEC EP')}<w:tc>${_tcPr(200)}${_para('')}</w:tc>${firma('Secretaria / Relatoría')}</w:tr></w:tbl>`;
+  const partList=(m.who||'EP PETROECUADOR').split(',').map(s=>s.trim()).filter(Boolean);
+  function firma(empresa,w){return `<w:tc>${_tcPr(w)}<w:p><w:pPr><w:spacing w:before="1400" w:after="0"/></w:pPr></w:p><w:p><w:pPr><w:pBdr><w:top w:val="single" w:sz="6" w:space="1" w:color="999999"/></w:pBdr><w:jc w:val="center"/></w:pPr></w:p>${_para(empresa,{size:18,color:GR,align:'center'})}</w:tc>`;}
+  const N=partList.length;
+  const colW=Math.floor((9360-(N-1)*200)/N);
+  const spacer=`<w:tc>${_tcPr(200)}${_para('')}</w:tc>`;
+  const firmaRow=partList.map((p,i)=>firma(p,colW)+(i<N-1?spacer:'')).join('');
+  const firmas=`<w:tbl><w:tblPr><w:tblW w:w="9360" w:type="dxa"/>${_borders(false)}</w:tblPr><w:tr>${firmaRow}</w:tr></w:tbl>`;
 
   const body=enc+_hline(AZ2,24)+_para('')+
     `<w:p><w:pPr><w:spacing w:before="200" w:after="140"/></w:pPr>${_run('ACTA DE REUNIÓN',{bold:true,size:30,color:AZ})}</w:p>`+
@@ -4934,6 +5098,17 @@ function drawRing(){
   </svg>`;
 }
 
+
+function addPortalLog(tipo,datos){try{if(!DB.cronoLog)DB.cronoLog=[];DB.cronoLog.push({ts:new Date().toISOString(),tipo,...datos});if(DB.cronoLog.length>300)DB.cronoLog=DB.cronoLog.slice(-300);actualizarBadgeVersiones();}catch(e){}}
+function logsSinVersionar(){const u=DB.cronoVersiones&&DB.cronoVersiones.length?DB.cronoVersiones[DB.cronoVersiones.length-1].ts:null;if(!u)return DB.cronoLog||[];return(DB.cronoLog||[]).filter(e=>e.ts>u);}
+function actualizarBadgeVersiones(){const n=logsSinVersionar().length;const b=document.getElementById('versionBadge');if(b){b.textContent=n>0?'● '+n+' cambio'+(n===1?'':'s'):'';b.style.display=n>0?'inline-block':'none';}}
+function crearVersion(){if(!SB_EDITOR){toast('Solo el editor puede crear versiones');return;}const p=logsSinVersionar();const res=p.slice(-20).map(e=>(e.tipo==='modificado'?'Modificado':e.tipo==='nuevo'?'Nuevo':e.tipo==='eliminado'?'Eliminado':e.tipo==='override'?'Fecha manual':e.tipo==='peso'?'Peso':'Reset')+': '+(e.actividad||e.id||'—')+(e.campo?' · '+e.campo:'')).join('\n');const m=document.createElement('div');m.id='versionModal';m.style.cssText='position:fixed;inset:0;background:rgba(15,36,64,.55);z-index:9999;display:flex;align-items:center;justify-content:center';m.innerHTML=`<div style="background:#fff;border-radius:12px;padding:28px 32px;max-width:520px;width:95%;box-shadow:0 8px 40px rgba(14,34,71,.25)"><div style="font-size:16px;font-weight:700;color:var(--navy);margin-bottom:6px">💾 Guardar versión</div><div style="font-size:12px;color:var(--slate);margin-bottom:14px">${p.length} cambios</div>${p.length>0?`<div style="background:#f4f7fb;border-radius:7px;padding:10px 12px;font-size:11px;max-height:130px;overflow-y:auto;margin-bottom:14px;white-space:pre-wrap;color:#374151">${res}</div>`:''}<label style="font-size:12px;font-weight:600;color:var(--navy);display:block;margin-bottom:5px">Motivo <span style="color:#b83a4a">*</span></label><textarea id="versionMotivo" rows="3" placeholder="Ej: Actividad 1.1 extendida por demora APPB" style="width:100%;border:1.5px solid var(--line);border-radius:7px;padding:9px 11px;font-size:12.5px;resize:vertical;font-family:inherit;outline:none"></textarea><div style="display:flex;gap:10px;margin-top:16px;justify-content:flex-end"><button onclick="document.getElementById('versionModal').remove()" style="padding:8px 18px;border:1px solid var(--line);border-radius:7px;background:#fff;cursor:pointer;font-size:13px">Cancelar</button><button onclick="confirmarVersion()" style="padding:8px 20px;background:var(--blue);color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:13px;font-weight:600">Guardar</button></div></div>`;document.body.appendChild(m);setTimeout(()=>{const x=document.getElementById('versionMotivo');if(x)x.focus();},50);}
+function confirmarVersion(){const mot=(document.getElementById('versionMotivo').value||'').trim();if(!mot){document.getElementById('versionMotivo').style.borderColor='#b83a4a';return;}if(!DB.cronoVersiones)DB.cronoVersiones=[];const n=DB.cronoVersiones.length+1;DB.cronoVersiones.push({id:'v'+n+'_'+Date.now(),version:'v'+n,ts:new Date().toISOString(),motivo:mot,automatico:false,snapshot:_cronoState?JSON.parse(JSON.stringify(_cronoState)):null,pesos:JSON.parse(JSON.stringify({weights:DB.weights||{},phaseWeights:DB.phaseWeights||{}})),cambios:logsSinVersionar().slice()});if(DB.cronoVersiones.length>15)DB.cronoVersiones=DB.cronoVersiones.slice(-15);document.getElementById('versionModal').remove();actualizarBadgeVersiones();save();toast('Versión v'+n+' guardada');}
+function guardarAutoSnapshot(mot,payload){if(!DB.cronoVersiones)DB.cronoVersiones=[];const n=DB.cronoVersiones.length+1;DB.cronoVersiones.push({id:'v'+n+'_'+Date.now(),version:'v'+n,ts:new Date().toISOString(),motivo:mot,automatico:true,snapshot:payload||(_cronoState?JSON.parse(JSON.stringify(_cronoState)):null),pesos:JSON.parse(JSON.stringify({weights:DB.weights||{},phaseWeights:DB.phaseWeights||{}})),cambios:[]});if(DB.cronoVersiones.length>15)DB.cronoVersiones=DB.cronoVersiones.slice(-15);try{localStorage.setItem(KEY,JSON.stringify(DB));}catch(e){}}
+function fmtTs(ts){if(!ts)return'—';const d=new Date(ts);return d.toLocaleDateString('es-EC',{day:'2-digit',month:'short',year:'numeric'})+' '+d.toLocaleTimeString('es-EC',{hour:'2-digit',minute:'2-digit'});}
+function mostrarHistorial(){const vs=(DB.cronoVersiones||[]).slice().reverse();const fi=vs.length?vs.map(v=>`<tr style="border-top:1px solid #edf1f5"><td style="padding:8px 10px;font-weight:600;color:var(--navy)">${v.version}</td><td style="padding:8px 10px;font-size:11.5px;color:var(--slate)">${fmtTs(v.ts)}</td><td style="padding:8px 10px;font-size:12px">${v.motivo||'—'}${v.automatico?' <span style="font-size:10px;color:#6fa0c7">(auto)</span>':''}</td><td style="padding:8px 10px;font-size:11px;color:var(--slate)">${(v.cambios||[]).length}</td><td style="padding:8px 10px;text-align:center">${v.snapshot?`<button onclick="restaurarVersion('${v.id}')" style="padding:4px 12px;font-size:11px;background:var(--blue);color:#fff;border:none;border-radius:5px;cursor:pointer">Restaurar</button>`:'—'}</td></tr>`).join(''):'<tr><td colspan="5" style="padding:20px;text-align:center;color:var(--slate)">Sin versiones</td></tr>';const m=document.createElement('div');m.id='historialModal';m.style.cssText='position:fixed;inset:0;background:rgba(15,36,64,.55);z-index:9999;display:flex;align-items:center;justify-content:center';m.innerHTML=`<div style="background:#fff;border-radius:12px;padding:24px 28px;max-width:760px;width:97%;max-height:82vh;overflow-y:auto;box-shadow:0 8px 40px rgba(14,34,71,.25)"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><div style="font-size:16px;font-weight:700;color:var(--navy)">📋 Historial</div><button onclick="document.getElementById('historialModal').remove()" style="background:none;border:none;font-size:20px;cursor:pointer">×</button></div><table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f4f7fb"><th style="padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;color:var(--slate)">Versión</th><th style="padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;color:var(--slate)">Fecha</th><th style="padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;color:var(--slate)">Motivo</th><th style="padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;color:var(--slate)">Cambios</th><th style="padding:8px 10px;text-align:center;font-size:11px;text-transform:uppercase;color:var(--slate)">Restaurar</th></tr></thead><tbody>${fi}</tbody></table></div>`;document.body.appendChild(m);}
+function restaurarVersion(id){const v=(DB.cronoVersiones||[]).find(x=>x.id===id);if(!v||!v.snapshot){toast('No disponible');return;}if(!confirm('¿Restaurar a '+v.version+'?'))return;guardarAutoSnapshot('(auto — antes de restaurar '+v.version+')',_cronoState?JSON.parse(JSON.stringify(_cronoState)):null);const fr=document.getElementById('cronoFrame');if(fr&&fr.contentWindow)try{fr.contentWindow.postMessage({type:'crono-restore',payload:v.snapshot},'*');}catch(e){}_cronoState=v.snapshot;DB._cronoSnapshot=v.snapshot;if(v.pesos){DB.weights=JSON.parse(JSON.stringify(v.pesos.weights||{}));DB.phaseWeights=JSON.parse(JSON.stringify(v.pesos.phaseWeights||{}));}const mo=document.getElementById('historialModal');if(mo)mo.remove();save();renderAll();toast('Restaurado a '+v.version);}
+
 /* ============ SINCRONIZACIÓN CON EL CRONOGRAMA (postMessage) ============ */
 /* El iframe del cronograma envía su estado cada vez que cambia.
    El portal lo recibe aquí y actualiza Resumen, Curva S, Kanban y Matriz. */
@@ -4951,6 +5126,12 @@ window.addEventListener('message', function(ev){
     DB._cronoSnapshot = _cronoState;
     try{ localStorage.setItem(KEY, JSON.stringify(DB)); }catch(e){}
     if(SB_EDITOR && SB.url !== 'SUPABASE_URL'){ sbSave(DB); }
+  }
+  if(d && d.type==='crono-log' && d.entry && SB_EDITOR){
+    try{ addPortalLog(d.entry.tipo, d.entry); }catch(e){}
+  }
+  if(d && d.type==='crono-auto-snapshot' && d.payload && SB_EDITOR){
+    guardarAutoSnapshot(d.motivo||'(automático)', d.payload);
   }
 });
 /* Pide el estado al iframe (por si ya cargó antes que el listener). */
@@ -5288,12 +5469,16 @@ function cpSetAcumulado(id,val){
 function cpSetPesoAct(id,val){
   if(!DB.weights) DB.weights={};
   const k='A|'+id;
+  const prev=DB.weights[k];
   if(val===''){ delete DB.weights[k]; } else DB.weights[k]=Math.max(0,parseFloat(val)||0);
+  try{ addPortalLog('peso',{id, campo:'peso_actividad', anterior:prev, nuevo:DB.weights[k]||null}); }catch(e){}
   save();
 }
 function cpSetFaseWeight(fase,val){
   if(!DB.phaseWeights) DB.phaseWeights={};
+  const prev=DB.phaseWeights[fase];
   if(val===''){ delete DB.phaseWeights[fase]; } else DB.phaseWeights[fase]=Math.max(0,parseFloat(val)||0);
+  try{ addPortalLog('peso',{id:fase, campo:'peso_fase', anterior:prev, nuevo:DB.phaseWeights[fase]||null}); }catch(e){}
   save();
 }
 function cpSetIni(id,val){
@@ -6386,39 +6571,95 @@ function stopSpeechRec(){
   document.getElementById('transcriptEdit').value=liveText.trim();
 }
 
-/* --- Transcripción de archivo con Groq Whisper (gratis, sin tarjeta) --- */
-async function transcribirArchivoConGemini(blob, filename){ // nombre mantenido por compatibilidad
-  const key=document.getElementById('apiKey').value.trim();
-  if(!key){
-    toast('Ingresa tu Groq API Key para transcribir el archivo');
-    document.getElementById('processWrap').style.display='block';
-    return;
+/* ─── Barra de progreso ───────────────────────────────────────────────────── */
+function showProgress(msg,pct){
+  let pw=document.getElementById('transcProgressWrap');
+  if(!pw){
+    pw=document.createElement('div');
+    pw.id='transcProgressWrap';
+    pw.style.cssText='margin:0 0 10px;padding:10px 12px;background:var(--mist);border:1px solid var(--line);border-radius:10px';
+    pw.innerHTML='<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--slate);margin-bottom:5px"><span id="transcStatus"></span><span id="transcPct"></span></div><div style="background:var(--line);border-radius:4px;height:6px;overflow:hidden"><div id="transcBar" style="height:6px;background:var(--blue);border-radius:4px;width:0%;transition:width 0.4s"></div></div>';
+    const w=document.getElementById('processWrap');
+    w.insertBefore(pw,w.firstChild);
   }
-  toast('Transcribiendo con Groq Whisper…');
+  pw.style.display='block';
+  document.getElementById('transcStatus').textContent=msg;
+  document.getElementById('transcPct').textContent=Math.round(pct)+'%';
+  document.getElementById('transcBar').style.width=pct+'%';
+}
+function hideProgress(){const pw=document.getElementById('transcProgressWrap');if(pw)setTimeout(()=>pw.style.display='none',3000);}
+
+/* ─── WAV encoder (PCM 16-bit mono) ─────────────────────────────────────── */
+function audioBufferToWav(buffer){
+  const sr=buffer.sampleRate, len=buffer.length;
+  const mono=new Float32Array(len);
+  for(let c=0;c<buffer.numberOfChannels;c++){const ch=buffer.getChannelData(c);for(let i=0;i<len;i++)mono[i]+=ch[i];}
+  if(buffer.numberOfChannels>1)for(let i=0;i<len;i++)mono[i]/=buffer.numberOfChannels;
+  const pcm=new Int16Array(len);
+  for(let i=0;i<len;i++)pcm[i]=Math.max(-32768,Math.min(32767,Math.round(mono[i]*32767)));
+  const wav=new ArrayBuffer(44+pcm.byteLength);
+  const v=new DataView(wav);
+  const wr=(o,s)=>{for(let i=0;i<s.length;i++)v.setUint8(o+i,s.charCodeAt(i));};
+  wr(0,'RIFF');v.setUint32(4,wav.byteLength-8,true);wr(8,'WAVE');
+  wr(12,'fmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);
+  v.setUint32(24,sr,true);v.setUint32(28,sr*2,true);v.setUint16(32,2,true);v.setUint16(34,16,true);
+  wr(36,'data');v.setUint32(40,pcm.byteLength,true);
+  new Int16Array(wav,44).set(pcm);
+  return new Blob([wav],{type:'audio/wav'});
+}
+
+/* ─── Transcripción con Groq Whisper — soporta hasta 100 MB via WAV chunks ─ */
+async function transcribirArchivoConGemini(blob,filename){
+  const key=document.getElementById('apiKey').value.trim();
+  if(!key){toast('Ingresa tu Groq API Key para transcribir');document.getElementById('processWrap').style.display='block';return;}
+  const CHUNK=23*1024*1024;
+  document.getElementById('processWrap').style.display='block';
   try{
-    // Groq soporta Whisper large v3 — formato multipart/form-data
-    const formData=new FormData();
-    // Groq acepta: mp3, mp4, mpeg, mpga, m4a, wav, webm (max 25MB)
-    const audioFile=new File([blob], filename||'audio.webm', {type: blob.type||'audio/webm'});
-    formData.append('file', audioFile);
-    formData.append('model', 'whisper-large-v3');
-    formData.append('language', 'es');
-    formData.append('response_format', 'text');
-    const res=await fetch('https://api.groq.com/openai/v1/audio/transcriptions',{
-      method:'POST',
-      headers:{'Authorization':'Bearer '+key},
-      body:formData
-    });
-    if(!res.ok){
-      const err=await res.json().catch(()=>({error:{message:'Error '+res.status}}));
-      throw new Error(err.error?.message||'Error Groq Whisper');
+    showProgress('Decodificando audio en el navegador…',5);
+    const arrayBuf=await blob.arrayBuffer();
+    const ctx=new(window.AudioContext||window.webkitAudioContext)({sampleRate:16000});
+    let audioBuf;
+    try{audioBuf=await ctx.decodeAudioData(arrayBuf);}
+    catch(e){ctx.close();throw new Error('No se pudo decodificar el archivo. Usa Chrome/Edge y verifica que sea audio válido.');}
+    ctx.close();
+    showProgress('Convirtiendo a WAV…',15);
+    const wavBlob=audioBufferToWav(audioBuf);
+    const totalSec=audioBuf.duration;
+    const numChunks=Math.ceil(wavBlob.size/CHUNK);
+    const parts=[];
+    // WAV header=44 bytes; datos desde byte 44
+    const headerBuf=await wavBlob.slice(0,44).arrayBuffer();
+    const dataPerChunk=CHUNK-44;
+    for(let i=0;i<numChunks;i++){
+      const dStart=44+i*dataPerChunk;
+      const dEnd=Math.min(wavBlob.size,dStart+dataPerChunk);
+      const chunkBlob=new Blob([headerBuf,await wavBlob.slice(dStart,dEnd).arrayBuffer()],{type:'audio/wav'});
+      const p0=15+Math.round((i/numChunks)*80);
+      const p1=15+Math.round(((i+1)/numChunks)*80);
+      const mStart=Math.round(totalSec/numChunks*i/60);
+      const mEnd=Math.round(totalSec/numChunks*(i+1)/60);
+      showProgress(
+        numChunks>1?`Transcribiendo segmento ${i+1}/${numChunks} (min ${mStart}–${mEnd}) · ${(chunkBlob.size/1048576).toFixed(1)} MB`
+                  :`Transcribiendo audio (${(totalSec/60).toFixed(1)} min)…`,
+        p0
+      );
+      const fd=new FormData();
+      fd.append('file',new File([chunkBlob],`seg_${i}.wav`,{type:'audio/wav'}));
+      fd.append('model','whisper-large-v3');
+      fd.append('language','es');
+      fd.append('response_format','text');
+      const res=await fetch('https://api.groq.com/openai/v1/audio/transcriptions',{method:'POST',headers:{'Authorization':'Bearer '+key},body:fd});
+      if(!res.ok){const e=await res.json().catch(()=>({error:{message:'HTTP '+res.status}}));throw new Error(e.error?.message||'Error segmento '+(i+1));}
+      parts.push((await res.text()).trim());
+      showProgress(`Segmento ${i+1}/${numChunks} listo`,p1);
     }
-    const text=await res.text();
-    document.getElementById('transcriptEdit').value=text.trim();
-    document.getElementById('processWrap').style.display='block';
-    toast('Transcripción completada con Groq Whisper');
+    document.getElementById('transcriptEdit').value=parts.join(' ');
+    showProgress('✓ Transcripción completada',100);
+    hideProgress();
+    toast(numChunks>1?`Transcripción lista — ${numChunks} segmentos (${Math.round(totalSec/60)} min)`:`Transcripción completada (${Math.round(totalSec/60)} min)`);
   }catch(e){
-    toast('Error transcripción: '+e.message);
+    showProgress('✗ '+e.message,0);
+    toast('Error: '+e.message);
     document.getElementById('processWrap').style.display='block';
   }
 }
@@ -6499,7 +6740,7 @@ function handleDrop(e){
 }
 function loadAudioFile(f){
   if(!f) return;
-  if(f.size>26214400){ toast('Archivo demasiado grande (máx 25 MB)'); return; }
+  if(f.size>104857600){ toast('Archivo demasiado grande (máx 100 MB)'); return; }
   const url=URL.createObjectURL(f);
   document.getElementById('audioFilePlayer').src=url;
   document.getElementById('fileInfo').style.display='block';
@@ -6508,13 +6749,12 @@ function loadAudioFile(f){
   document.getElementById('transcriptEdit').value='';
   document.getElementById('recStatus').textContent='Archivo cargado';
   document.getElementById('recStatus').className='pill p2';
-  // Si hay API key de Gemini, transcribir automáticamente
+  document.getElementById('processWrap').style.display='block';
   const key=document.getElementById('apiKey').value.trim();
   if(key){
     transcribirArchivoConGemini(f, f.name);
   } else {
-    document.getElementById('processWrap').style.display='block';
-    toast('Archivo cargado — ingresa tu Groq API Key (console.groq.com) para transcribir automáticamente, o escribe la transcripción.');
+    toast('Archivo cargado. Ingresa tu Groq API Key o escribe la transcripción.');
   }
 }
 
@@ -6525,9 +6765,29 @@ async function genSummary(){
   const title=document.getElementById('recTitle').value.trim()||'Reunión sin título';
   const who=document.getElementById('recWho').value.trim();
   if(!key){ toast('Ingresa tu Groq API Key (console.groq.com — gratis)'); return; }
-  if(!transcript){ toast('Agrega la transcripción antes de enviar'); return; }
+  if(!transcript){
+    if(typeof fileAudioBlob!=='undefined'&&fileAudioBlob){
+      await transcribirArchivoConGemini(fileAudioBlob, fileAudioBlob.name||'audio');
+    } else { toast('Carga un archivo de audio o escribe la transcripción.'); return; }
+  }
   const btn=document.getElementById('btnSummary');
   btn.textContent='Procesando con Groq…'; btn.disabled=true;
+
+  // ── Estrategia de truncado inteligente para respetar límite de tokens ──────
+  // Tier gratuito Groq: ~12 000 TPM. 1 token ≈ 4 chars.
+  // Reservamos 2 500 tokens para prompt base + respuesta → ~9 500 tokens para transcripción
+  // = ~38 000 caracteres máximo de transcripción
+  const MAX_TRANSCRIPT_CHARS = 38000;
+  const transcriptFinal = document.getElementById('transcriptEdit').value.trim() || transcript;
+  let transcriptUsada = transcriptFinal;
+  let truncadaMsg = '';
+  if(transcriptFinal.length > MAX_TRANSCRIPT_CHARS){
+    // Tomar primeros 28 000 chars (inicio reunión) + últimos 10 000 (cierre/acuerdos)
+    const inicio = transcriptFinal.slice(0, 28000);
+    const cierre = transcriptFinal.slice(-10000);
+    transcriptUsada = inicio + '\n\n[... SEGMENTO CENTRAL OMITIDO POR LÍMITE DE TOKENS ...]\n\n' + cierre;
+    truncadaMsg = ` (transcripción larga: se procesó inicio + cierre, ${Math.round(transcriptFinal.length/1000)}k caracteres totales)`;
+  }
 
   const prompt=`Eres un asistente experto en proyectos de energía e infraestructura para EP Petroecuador, Ecuador.
 
@@ -6537,9 +6797,9 @@ Reunión: ${title}
 Participantes declarados: ${who||'No especificados'}
 
 TRANSCRIPCIÓN:
-${transcript}
+${transcriptUsada}
 
-Genera un resumen ejecutivo estructurado SIEMPRE EN ESPAÑOL (obligatorio) con las siguientes secciones:
+Genera un resumen ejecutivo estructurado SIEMPRE EN ESPAÑOL con las siguientes secciones:
 
 ASISTENTES IDENTIFICADOS
 Lista los nombres/instituciones que aparecen en la transcripción.
@@ -6559,46 +6819,77 @@ Acciones inmediatas acordadas.
 ALERTAS
 Riesgos, obstáculos o temas sin resolver mencionados en la reunión.
 
-Sé conciso y preciso. No inventes información que no esté en la transcripción. IMPORTANTE: Toda tu respuesta debe estar en español, sin excepción, aunque la transcripción esté en otro idioma.`;
+Sé conciso y preciso. No inventes información que no esté en la transcripción. SIEMPRE EN ESPAÑOL.`;
 
-  try{
-    // Groq API — gratuita sin tarjeta, modelo Llama 3.3 70B
+  // ── Intentar con modelo grande; si falla por tokens, reintentar con modelo pequeño ──
+  async function callGroq(model, maxTok){
     const res=await fetch('https://api.groq.com/openai/v1/chat/completions',{
       method:'POST',
-      headers:{
-        'Content-Type':'application/json',
-        'Authorization':'Bearer '+key
-      },
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
       body:JSON.stringify({
-        model:'llama-3.3-70b-versatile',
+        model,
         messages:[
-          {role:'system', content:'Eres un asistente experto en proyectos de energía para EP Petroecuador. SIEMPRE respondes ÚNICAMENTE en español, independientemente del idioma de la transcripción o instrucción recibida. Está estrictamente prohibido responder en cualquier otro idioma.'},
+          {role:'system', content:'Eres un asistente experto en proyectos de energía para EP Petroecuador. SIEMPRE en español, sin excepción.'},
           {role:'user', content:prompt}
         ],
         temperature:0.3,
-        max_tokens:2048
+        max_tokens:maxTok
       })
     });
     if(!res.ok){
-      const err=await res.json();
-      throw new Error(err.error?.message||'Error API Groq (código '+res.status+')');
+      const err=await res.json().catch(()=>({error:{message:'Error HTTP '+res.status}}));
+      throw new Error(err.error?.message||'Error API Groq');
     }
-    const data=await res.json();
+    return res.json();
+  }
+
+  try{
+    let data;
+    try{
+      // Intento 1: modelo potente
+      data = await callGroq('llama-3.3-70b-versatile', 2048);
+      toast('Resumen generado con Groq · Llama 3.3'+truncadaMsg);
+    }catch(e1){
+      if(e1.message.includes('Request too large')||e1.message.includes('TPM')||e1.message.includes('tokens')){
+        // Intento 2: modelo con contexto mayor, transcripción más corta
+        btn.textContent='Reintentando con modelo alternativo…';
+        // Recortar aún más: solo primeros 18 000 + últimos 6 000
+        const t2 = transcriptFinal.slice(0,18000)+'\n\n[... OMITIDO ...]\n\n'+transcriptFinal.slice(-6000);
+        prompt.replace(transcriptUsada, t2); // referencia ya capturada en closure
+        // Reconstruir prompt reducido
+        const promptCorto=prompt.replace(transcriptUsada, t2);
+        const res2=await fetch('https://api.groq.com/openai/v1/chat/completions',{
+          method:'POST',
+          headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
+          body:JSON.stringify({
+            model:'llama3-8b-8192',
+            messages:[
+              {role:'system',content:'Eres un asistente experto en EP Petroecuador. SIEMPRE en español.'},
+              {role:'user',content:promptCorto}
+            ],
+            temperature:0.3,
+            max_tokens:1500
+          })
+        });
+        if(!res2.ok){
+          const err2=await res2.json().catch(()=>({error:{message:'Error HTTP '+res2.status}}));
+          throw new Error(err2.error?.message||'Error modelo alternativo');
+        }
+        data=await res2.json();
+        toast('Resumen generado con modelo alternativo (Llama 3 8B)'+truncadaMsg);
+      } else { throw e1; }
+    }
+
     const summary=data.choices?.[0]?.message?.content||'Sin respuesta de Groq';
-    document.getElementById('summaryBox').textContent=summary;
+    document.getElementById('summaryBox').innerHTML=renderMd(summary);
     document.getElementById('summaryResult').style.display='block';
     document.getElementById('summaryResult').scrollIntoView({behavior:'smooth'});
-    // Guardar summary en la reunión activa (si hay una en edición)
     const rTitle=document.getElementById('recTitle').value.trim();
-    if(rTitle){
-      const rm=DB.meetings.find(m=>m.title===rTitle);
-      if(rm){rm.summary=summary;save();}
-    }
-    toast('Resumen generado con Groq · Llama 3.3');
+    if(rTitle){ const rm=DB.meetings.find(m=>m.title===rTitle); if(rm){rm.summary=summary;save();} }
   }catch(e){
     toast('Error Groq: '+e.message);
   }
-  btn.textContent='✦ Generar resumen con Groq (Llama 3)';
+  btn.textContent='✦ Generar resumen';
   btn.disabled=false;
 }
 
@@ -6608,10 +6899,13 @@ function saveMeetingFromRec(){
   const who=document.getElementById('recWho').value.trim();
   const summary=document.getElementById('summaryBox').textContent;
   const transcript=document.getElementById('transcriptEdit').value.trim();
+  const today=new Date().toISOString().slice(0,10);
+  const date=document.getElementById('recDate')&&document.getElementById('recDate').value||today;
+  const timeStart=document.getElementById('recTimeStart')&&document.getElementById('recTimeStart').value||'';
+  const timeEnd=document.getElementById('recTimeEnd')&&document.getElementById('recTimeEnd').value||'';
   DB.meetings.push({
-    id:uid(), title, date:new Date().toISOString().slice(0,10),
-    time:new Date().toLocaleTimeString('es-EC',{hour:'2-digit',minute:'2-digit'}),
-    who, notes: summary||transcript||'Sin resumen'
+    id:uid(), title, date, time:timeStart, timeEnd, who,
+    notes: summary||transcript||'Sin resumen', realizada:true
   });
   save(); toast('Reunión guardada');
   // Reset
@@ -6671,6 +6965,8 @@ renderAll();
 detectDevice();
 $("#fab").style.display='none';
 loadFromSupabase();
+(function(){if(SB_EDITOR){const v=document.getElementById('versionBar');if(v)v.style.display='flex';actualizarBadgeVersiones();}})();
+(function(){const d=document.getElementById('recDate');if(d)d.value=new Date().toISOString().slice(0,10);})();
 /* API Key Groq precargada */
 (function(){
   // Groq API Key: se guarda en este navegador, no está en el código
