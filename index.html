@@ -1936,8 +1936,20 @@ function onDateOverrideISO(e){
   const id = inp.dataset.id;
   const val = inp.value; // ya viene en formato YYYY-MM-DD del input date
   if (val){
-    logChange('override',{id, campo:'fecha_inicio', nuevo:val});
-    setOverride(prefix, id, val); // val ya es ISO
+    // Solo fijar override si la fecha difiere de la calculada de forma natural
+    // (con los demás overrides, excluyendo el de esta fila). Si coinciden, no se
+    // 'congela' la fecha — evita bloqueos por toques accidentales del selector.
+    const ovTmp = Object.assign({}, getOverrides(prefix));
+    delete ovTmp[id];
+    const natCalc = computeSchedule(state[prefix], state.t0, ovTmp);
+    const natISO = (natCalc[id] &amp;&amp; natCalc[id].ini) ? fmtISO(natCalc[id].ini) : null;
+    if (val === natISO){
+      setOverride(prefix, id, null);
+      logChange('override',{id, campo:'fecha_inicio', nuevo:null});
+    } else {
+      setOverride(prefix, id, val); // val ya es ISO
+      logChange('override',{id, campo:'fecha_inicio', nuevo:val});
+    }
     saveState();
     renderAll(prefix);
   } else {
@@ -2351,17 +2363,22 @@ function recalcularWBS(prefix){
 
   // Actualizar predecesoras con los nuevos IDs
   if(Object.keys(idMap).length > 0){
+    // Remapear predecesoras (una sola pasada; .map lee idMap sin mutarlo)
     rows.forEach(r => {
       if(r.pred &amp;&amp; r.pred.length > 0){
         r.pred = r.pred.map(p => idMap[p] || p);
       }
-      // Actualizar overrides de fecha
-      Object.keys(idMap).forEach(oldId => {
-        const newId = idMap[oldId];
-        const ov = getOverrides(prefix);
-        if(ov[oldId]){ setOverride(prefix, newId, ov[oldId]); setOverride(prefix, oldId, null); }
-      });
     });
+    // Remapear overrides reconstruyendo el objeto completo en una sola pasada.
+    // Evita que se pisen valores cuando el renombrado encadena IDs (p.ej. 1.2->1.3, 1.3->1.4),
+    // que era la causa del recálculo errático de fechas al insertar/mover actividades.
+    const ovOld = getOverrides(prefix);
+    const ovNew = {};
+    Object.keys(ovOld).forEach(oldId => {
+      const newId = idMap[oldId] || oldId;
+      ovNew[newId] = ovOld[oldId];
+    });
+    state['overrides_' + prefix] = ovNew;
   }
 }
 
@@ -3128,12 +3145,27 @@ function predToggle(optEl, prefix, idx, id){
     // Marcar
     chk.checked = true;
     if (!row.pred.includes(id)) row.pred.push(id);
+    // Una predecesora gobierna la fecha de inicio: liberar cualquier override manual previo
+    // que, de lo contrario, bloquearía la actualización por predecesora.
+    setOverride(prefix, row.id, null);
   }
   // Actualizar label del botón sin destruir el dropdown
   const btn = optEl.closest('.pred-wrap').querySelector('.pred-btn .pred-lbl');
   if(btn) btn.textContent = row.pred.length > 0 ? row.pred.join(', ') : '— ninguna —';
   saveState();
-  // Recalcular fechas sin re-renderizar la tabla (preserva el dropdown abierto)
+  // Refrescar la fecha de inicio de esta fila según el nuevo cálculo, sin cerrar el dropdown
+  try {
+    const calc = computeSchedule(state[prefix], state.t0, getOverrides(prefix));
+    const c = calc[row.id];
+    const tr = optEl.closest('tr');
+    const dInp = tr ? tr.querySelector('input[type=date][data-field=inicio]') : null;
+    if (c &amp;&amp; c.ini &amp;&amp; dInp){
+      dInp.value = fmtISO(c.ini);
+      dInp.style.background = 'var(--blanco)';
+      dInp.style.borderColor = 'var(--gris-borde)';
+      dInp.title = 'Calculada por predecesoras — editar para fijar';
+    }
+  } catch(_){}
   renderPhaseSummary(prefix);
   renderKPI();
 }
@@ -3147,7 +3179,7 @@ document.addEventListener('click', function(e){
     });
     if(wasOpen){
       // Ahora sí renderizar completo para actualizar el Gantt con nuevas predecesoras
-      renderAll('t2');
+      renderAll(state.activeView);
     }
   }
 });
